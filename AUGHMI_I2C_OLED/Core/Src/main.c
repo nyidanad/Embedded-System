@@ -23,7 +23,9 @@
 /* USER CODE BEGIN Includes */
 #include "ssd1306.h"
 #include "ssd1306_tests.h"
+#include "ssd1306_fonts.h"
 #include "stm32f4xx_hal.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +49,12 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+char uart_rx_buffer[1024];
+char category_data[5][512];
+uint8_t current_info_index = 0;
+uint32_t last_press_time = 0;
+#define DEBOUNCE_DELAY 50              // Debounce (ms
+#define DOUBLE_PRESS_DELAY 500         // Double press (ms)
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -61,7 +68,7 @@ static void MX_I2C1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-extern const uint8_t garfield_128x64[];
+
 /* USER CODE END 0 */
 
 /**
@@ -103,9 +110,13 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  ssd1306_Fill(White);
-	  ssd1306_DrawBitmap(0, 0, garfield_128x64, 128, 64, Black);
-	  ssd1306_UpdateScreen();
+	      HAL_UART_Receive(&huart2, (uint8_t *)uart_rx_buffer, sizeof(uart_rx_buffer), HAL_MAX_DELAY);
+
+	      ProcessUARTData(uart_rx_buffer);
+
+	      DisplayOLED(category_data[current_info_index]);
+
+	      HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -175,7 +186,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.ClockSpeed = 400000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -248,7 +259,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
@@ -259,11 +270,88 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : Button_Pin */
+  GPIO_InitStruct.Pin = Button_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(Button_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+void DisplayOLED(const char *data) {
+    ssd1306_Fill(Black);
+
+    uint8_t y_pos = 0;
+    const char *line = data;
+    while (*line && y_pos < SSD1306_HEIGHT) {
+        char buffer[32];
+        char *newline = strchr(line, '\n');
+        if (newline) {
+            size_t line_length = newline - line;
+            if (line_length > sizeof(buffer) - 1) {
+                line_length = sizeof(buffer) - 1;
+            }
+            strncpy(buffer, line, line_length);
+            buffer[line_length] = '\0';
+            line = newline + 1;
+        } else {
+            strncpy(buffer, line, sizeof(buffer) - 1);
+            buffer[sizeof(buffer) - 1] = '\0';
+            line += strlen(line);
+        }
+
+        ssd1306_SetCursor(0, y_pos);
+        ssd1306_WriteString(buffer, Font_6x8, White);
+        y_pos += 10;
+    }
+
+    ssd1306_UpdateScreen();
+}
+
+void ProcessUARTData(const char *data) {
+    memset(category_data, 0, sizeof(category_data));
+
+    for (int i = 0; i < 5; i++) {
+        char identifier[5];
+        sprintf(identifier, "000%d", i + 1);
+        char *section_start = strstr(data, identifier);
+        char *section_end = section_start ? strstr(section_start + 5, "000") : NULL;
+
+        if (section_start) {
+            section_start += 5;
+            if (section_end) {
+                strncpy(category_data[i], section_start, section_end - section_start);
+            } else {
+                strncpy(category_data[i], section_start, sizeof(category_data[i]) - 1);
+            }
+        }
+    }
+}
+
+// Gombkezelés
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    if (GPIO_Pin == GPIO_PIN_5) { // PB5 Button
+        uint32_t current_time = HAL_GetTick();
+
+        if (current_time - last_press_time > DEBOUNCE_DELAY) {
+            if (current_time - last_press_time < DOUBLE_PRESS_DELAY) {
+                current_info_index = (current_info_index == 0) ? 5 : current_info_index - 1;
+            } else {
+                current_info_index = (current_info_index + 1) % 5;
+            }
+            last_press_time = current_time;
+
+            DisplayOLED(category_data[current_info_index]);
+        }
+    }
+}
 
 /* USER CODE END 4 */
 
