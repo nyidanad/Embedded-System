@@ -50,7 +50,7 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 char uart_rx_buffer[1024];
-char category_data[5][512];
+char category_data[5][500];
 uint8_t current_info_index = 0;
 uint32_t last_press_time = 0;
 #define DEBOUNCE_DELAY 50              // Debounce (ms
@@ -110,13 +110,13 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	      HAL_UART_Receive(&huart2, (uint8_t *)uart_rx_buffer, sizeof(uart_rx_buffer), HAL_MAX_DELAY);
+	  HAL_UART_Receive(&huart2, (uint8_t *)uart_rx_buffer, sizeof(uart_rx_buffer), HAL_MAX_DELAY);
 
-	      ProcessUARTData(uart_rx_buffer);
+	  ProcessUARTData(uart_rx_buffer);
 
-	      DisplayOLED(category_data[current_info_index]);
+	  DisplayOLED(category_data[current_info_index]);
 
-	      HAL_Delay(500);
+	  HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -257,6 +257,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
@@ -269,6 +272,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LED_Pin */
+  GPIO_InitStruct.Pin = LED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : Button_Pin */
   GPIO_InitStruct.Pin = Button_Pin;
@@ -335,7 +345,7 @@ void ProcessUARTData(const char *data) {
     }
 }
 
-// Gombkezelés
+// Handeling Button press
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     if (GPIO_Pin == GPIO_PIN_5) { // PB5 Button
         uint32_t current_time = HAL_GetTick();
